@@ -1,0 +1,967 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta http-equiv="X-UA-Compatible" content="ie=edge">
+    <meta name="description" content="Creating a basic Puzzle Game just to practice JavaScript">
+    <meta name="keywords" content="HTML,CSS,XML,JavaScript, Games, Puzzle">
+    <meta name="author" content="Lyn Scott">
+    <title>PUZZLE GAME</title>
+    <style>
+        html, body, #game-container {
+            width: 100%; height: 100%;
+            margin: 0px; padding: 0px;
+            border: 0;
+            background-color: black; /* black background / fondo negro */
+            color: white; /* white fonts / letras blancas */
+            overflow: hidden; /* no scroll bars */
+        }
+        #canvas {
+            /* margin-left: auto; margin-right: auto; */
+            -webkit-box-shadow: 0px 0px 1px white; /* white border / borde blanco */
+            -moz-box-shadow:    0px 0px 1px white;
+            box-shadow: 0px 0px 1px white;
+        }
+    </style>
+</head>
+<body>
+
+    <canvas id="canvas"></canvas>
+
+    <script>
+
+        // -----------------------------------------
+        // Basic game engine / Motor de juego básico
+        // -----------------------------------------
+
+        // Game / Juego
+        class Game {
+
+            constructor(sprite, showFPS = false, widthToHeightRatio = 1) {
+                console.log("Game constructor");
+                const self = this;
+
+                this.sprite = sprite || new Sprite(); // game sprite
+
+                this.widthToHeightRatio = widthToHeightRatio;
+                this.centerX = 0;
+                this.centerY = 0;
+
+                this.targetFPS = 6;
+                this.skipTicks = 1000 / this.targetFPS;
+                this.lastTime = (new Date).getTime();
+                this.deltaTime = 0;
+                this.ticks = 0;
+
+                this.backgroundColor = "#000"; // negro
+
+                this.isRunning = false;
+                this.isPaused = false;
+
+                this.canvas = document.querySelector('canvas');
+                this.ctx = this.canvas.getContext("2d");
+                this.ctx.font = "normal 30px Arial";
+
+                this.rect = this.canvas.getBoundingClientRect();
+                this.mouseX = 0;
+                this.mouseY = 0;
+
+                this.showFPS = showFPS;
+                this.currentFPS = 0;
+                this._frameCounter = 0;
+                this.intervalFPS = null;
+
+                this.resizeCanvas();
+
+                // ----- events
+                this.setupEvents();
+
+                // --------
+                window._game = this;
+
+                this._defineAnimationFrame();
+                this.start(); // run
+            }
+
+            resizeCanvas() {
+                // this.canvas = document.querySelector('canvas');
+                this.canvas.width = document.documentElement.clientWidth;
+                this.canvas.height = document.documentElement.clientHeight;
+                /*
+                var newWidth = document.documentElement.clientWidth;
+                var newHeight = document.documentElement.clientHeight;
+                var newWidthToHeight = newWidth / newHeight;
+
+                if (newWidthToHeight > this.widthToHeight) {
+                    newWidth = newHeight * widthToHeight;
+                    this.canvas.height = newHeight;
+                    this.canvas.width = newWidth;
+                } else {
+                    if (this.widthToHeightRatio !== 0) {
+                        newHeight = newWidth / this.widthToHeightRatio;
+                    }
+                    this.canvas.width = newWidth;
+                    this.canvas.height = newHeight;
+                }
+                */
+                this.centerX = Math.floor(this.canvas.width / 2);
+                this.centerY = Math.floor(this.canvas.height / 2);
+            }
+
+            setupEvents() {
+                const self = this;
+
+                window.addEventListener("resize", () => { this.resizeCanvas() }, false);
+
+                document.addEventListener('mousemove', function (event) {
+                    var mouseX = Math.round(event.clientX - self.rect.left);
+                    var mouseY = Math.round(event.clientY - self.rect.top);
+                    if (mouseX > 0 && mouseY > 0 && mouseX < self.canvas.width && mouseY < self.canvas.height) {
+                        self.mouseX = mouseX;
+                        self.mouseY = mouseY;
+                        // console.log('mousemove:', { x: mouseX, y: mouseY });
+                        self.handleMouse(self.mouseX, self.mouseY, false);
+                    }
+                });
+
+                document.addEventListener('click', function (event) {
+                    var mouseX = Math.round(event.clientX - self.rect.left);
+                    var mouseY = Math.round(event.clientY - self.rect.top);
+                    if (mouseX > 0 && mouseY > 0 && mouseX < self.canvas.width && mouseY < self.canvas.height) {
+                        self.mouseX = mouseX;
+                        self.mouseY = mouseY;
+                        // console.log('click:', { x: mouseX, y: mouseY });
+                        self.handleMouse(self.mouseX, self.mouseY, true);
+                    }
+                });
+
+                // set rightDown or leftDown if the right or left keys are down
+                /*
+                document.onkeydown = function onKeyDown(evt) {
+                    evt = evt || document.event; //IE does not pass the event object
+                    if ( typeof evt == "undefined" ) evt = window.event;
+                    // console.log('keydown:', evt.which || evt.keyCode);
+                    self.handleInput(evt.which || evt.keyCode);
+                }
+                */
+
+                //and unset them when the right or left key is released
+                document.onkeyup = function onKeyUp(evt) {
+                    evt = evt || document.event; //IE does not pass the event object
+                    if ( typeof evt == 'undefined' ) evt = window.event;
+                    // console.log('keyup:', evt.which || evt.keyCode);
+                    self.handleInput(evt.which || evt.keyCode);
+                }
+            }
+
+            handleMouse(x, y, clicked) {
+                // console.log(`x:${x} y:${y} clicked:${clicked}`);
+                this.sprite.handleMouse(x, y, clicked);
+            }
+
+            handleInput(keyCode) {
+                // console.log("key: " + keyCode);
+                // 37 left arrow, 38 up arrow, 39 right arrow, 40 down arrow, 27 escape, 32 space, 13 enter
+                this.sprite.handleInput(keyCode);
+            }
+
+            reset() {
+                // -- shuffle / desordenar
+                console.log('reset()');
+            }
+
+            start() {
+                console.log('start()');
+                this.isRunning = true;
+                this.isPaused = false;
+                this.intervalFPS = setInterval(() => {
+                    this.currentFPS = this._frameCounter;
+                    this._frameCounter = 0;
+                }, 1000);
+                this.animationFrame = window._requestAnimationFrame(this._frame);
+            }
+
+            stop() {
+                console.log('stop()');
+                this.isRunning = false;
+                this.isPaused = false;
+                clearInterval(this.intervalFPS);
+                window._cancelAnimationFrame(this.animationFrame);
+                this.animationFrame = null;
+            }
+
+            pause() {
+                console.log('pause()');
+                this.isPaused = true;
+            }
+
+            continue() {
+                console.log('continue()');
+                this.isPaused = false;
+            }
+
+            // update / actualizar
+            update(deltatime) {
+                this.sprite.update(deltatime);
+            }
+
+            // draw / dibujar
+            render() {
+                // ------ clear first ------
+                //this.ctx.fillStyle = this.backgroundColor;
+                //this.ctx.fillRect(0, 0,this.canvas.width, this.canvas.height);
+                this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
+
+                // ------ draw game ------
+                this.sprite.render(this.ctx);
+                // console.log(this.targetFPS);
+
+                // ------ count frame ------
+                this._frameCounter++;
+                if (this.showFPS) {
+                    // draw the FPS
+                    this.ctx.fillStyle = "#fff";
+                    this.ctx.font = "10px Arial";
+                    this.ctx.textAlign = "center";
+                    this.ctx.fillText(`[FPS:${(this.currentFPS).toString()}]`, this.canvas.width - 50, this.canvas.height - 30);
+                }
+            }
+
+            // game loop
+            _frame() {
+                //console.log('frame()');
+                const maxFrameSkip = 5;
+                var nextGameTick = (new Date).getTime();
+                var time = (new Date).getTime();
+                var dt = 0; // deltatime / tiempo transcurrido desde el último frame
+                var loops = 0;
+
+                do {
+
+                    dt = (time - window._game.lastTime) / 1000;
+
+                    if (!window._game.isPaused) {
+                        window._game.update(dt);
+                    }
+
+                    nextGameTick += window._game.skipTicks;
+                    loops++;
+
+                } while (time > nextGameTick && loops <= maxFrameSkip);
+
+                window._game.render();
+
+                window._game.lastTime = (new Date).getTime();
+
+                if (window._game.animationFrame) {
+                    window._requestAnimationFrame(window._game._frame);
+                }
+            }
+
+            // requestAnimationFrame compatibility function
+            _defineAnimationFrame() {
+                window._requestAnimationFrame = (
+                    window.requestAnimationFrame ||
+                    window.mozRequestAnimationFrame ||
+                    window.webkitRequestAnimationFrame ||
+                    window.msRequestAnimationFrame
+                );
+                window._cancelAnimationFrame = (window.cancelAnimationFrame || window.mozCancelAnimationFrame);
+            }
+        }
+
+        // Sprite / Caracter
+        class Sprite {
+            constructor(x, y, w, h) {
+                this.position = new Vector2(x, y);
+                this.target = new Vector2(x, y);
+                this.width = w;
+                this.height = h;
+                this.acceleration = new Vector2(0, 0);
+                this.speed = new Vector2(0, 0); // current speed
+                this.speedLimit = new Vector2(100, 100);
+                this.angle = 0; // direction
+                // this.moveTowardsAngle = false;
+                this.active = true;
+                this.visible = true;
+                this.children = [];
+            }
+
+            handleMouse(x, y, clicked) {
+                // console.log(`x:${x} y:${y} clicked:${clicked}`);
+                this.children.forEach(sprite => sprite.handleMouse(x, y, clicked));
+            }
+
+            handleInput(keyCode) {
+                // console.log("key: " + keyCode);
+                // 37 left arrow, 38 up arrow, 39 right arrow, 40 down arrow, 27 escape, 32 space, 13 enter
+                this.children.forEach(sprite => sprite.handleInput(keyCode));
+            }
+
+            // update / actualizar
+            update(deltatime) {
+                if (!this.active) {
+                    return;
+                }
+
+                // update this
+
+                // update children
+                if (this.children.length > 0) {                    
+                    this.children.forEach(sprite => sprite.update(deltatime));
+                }
+            }
+
+            // draw / dibujar
+            render(ctx) {
+                if (!this.active || !this.visible) {
+                    return;
+                }
+
+                // render this
+
+                // render children
+                if (this.children.length > 0) {       
+                    this.children.forEach(sprite => sprite.render(ctx));
+                }
+            }
+        }
+
+        // Vector 2D
+        class Vector2 {
+            constructor(x, y) {
+                this.x = x || 0;
+                this.y = y || 0;
+            }
+
+            set(x, y) {
+                this.x = x || 0;
+                this.y = y || 0;
+                return this;
+            }
+
+            setVector(v) {
+                this.x = v.x;
+                this.y = v.y;
+                return this;
+            }
+
+            clone() {
+                return new Vector2(this.x, this.y)
+            }
+
+            add(vector) {
+		        return new Vector2(this.x + vector.x, this.y + vector.y);
+            }
+
+            subtract(vector) {
+                return new Vector2(this.x - vector.x, this.y - vector.y);
+            }
+
+            scale(scalar) {
+                return new Vector2(this.x * scalar, this.y * scalar);
+            }
+
+            dot(vector) {
+                return (this.x * vector.x + this.y + vector.y);
+            }
+
+            moveToTarget(target /* Vector2 */, speed /* Vector2 */, dt) {
+                /*
+                // Linearly interpolates between vectors A and B by dt. dt = 0 returns A, dt = 1 returns B
+                dt = Math.min(dt, 1); // still allow negative dt
+                var diff = target.subtract(this);
+                return this.add(diff.scale(dt));
+                */
+                if (target instanceof Vector2 && speed instanceof Vector2 && this.x !== target.x || this.y !== target.y) {
+                    this.x = Utils.lerp(this.x, target.x, speed.x * dt);
+                    this.y = Utils.lerp(this.y, target.y, speed.y * dt);
+                }
+                return this;
+            }
+
+            moveToAngle(angle, speed /* Vector2 */, dt) {
+                // derecha = 0 grados, abajo = 90 grados, izquierda = 180 grados, arriba = 270 grados
+                if (speed instanceof Vector2) {
+                    var rotation = angle * Math.PI / 180;
+                    this.x = this.x + (speed.x * dt) * Math.cos(rotation);
+                    this.y = this.y + (speed.y * dt) * Math.sin(rotation);
+                }
+                return this;
+            }
+
+            static getTargetByAngle(position /* Vector2 */, angle, distance) {
+                // derecha = 0 grados, abajo = 90 grados, izquierda = 180 grados, arriba = 270 grados
+                if (position instanceof Vector2) {
+                    var rotation = angle * Math.PI / 180;
+                    position.x = position.x + distance * Math.cos(rotation);
+                    position.y = position.y + distance * Math.sin(rotation);
+                }
+                return position;
+            }
+
+            magnitude() {
+                return Math.sqrt(this.magnitudeSqr());
+            }
+
+            magnitudeSqr() {
+                return (this.x * this.x + this.y * this.y);
+            }
+
+            distance(vector) {
+                return Math.sqrt(this.distanceSqr(vector));
+            }
+
+            distanceSqr(vector) {
+                var deltaX = this.x - vector.x;
+                var deltaY = this.y - vector.y;
+                return (deltaX * deltaX + deltaY * deltaY);
+            }
+
+            normalize() {
+                var mag = this.magnitude();
+                var vector = this.clone();
+                if(Math.abs(mag) < 1e-9) {
+                    vector.x = 0;
+                    vector.y = 0;
+                } else {
+                    vector.x /= mag;
+                    vector.y /= mag;
+                }
+                return vector;
+            }
+
+            angle(vector) {
+                return Math.atan2(vector.y, vector.x);
+            }
+
+            rotate(alpha) {
+                var cos = Math.cos(alpha);
+                var sin = Math.sin(alpha);
+                var vector = new Vector2();
+                vector.x = this.x * cos - this.y * sin;
+                vector.y = this.x * sin + this.y * cos;
+                return vector;
+            }
+
+            toString() {
+                return `x: ${this.x}, y: ${this.y}`;
+            }
+        }
+
+        // Utility class
+        class Utils {
+            // Lerp is the nickname for Linear Interpolation between two points
+            static lerp(start, end, amount){
+                return start * (1-amount) + end * amount;
+            }
+
+            static getRandomInt(min, max) {
+                min = Math.ceil(min);
+                max = Math.floor(max);
+                return Math.floor(Math.random() * (max - min + 1)) + min;
+            }
+
+            static getCenter() {
+                var w = document.documentElement.clientWidth;
+                var h = document.documentElement.clientHeight;
+                var cx = Math.floor(w / 2);
+                var cy = Math.floor(h / 2);
+                return new Vector2(cx, cy);
+            }
+        }
+
+        // -----------------------------------
+        // Define the game / Definir el juego
+        // -----------------------------------
+
+        // Our Puzzle game / Nuestro juego
+        class Puzzle extends Sprite {
+            constructor() {
+                super(0, 0, 600, 600);
+
+                this._slots = [];
+                this._updated = false;
+                Puzzle.moves = 0;
+
+                this.reset();
+            }
+
+            get slots() { this._slots; }
+            set slots(value) { this._slots = value; }
+
+            get updated() { this._updated; }
+            set updated(value) { this._updated = value; }
+
+            // get moves() { Puzzle.moves; }
+            // set moves(value) { Puzzle.moves = value; }
+
+            reset() {
+                this.children = [];
+                Puzzle.slots = [];
+
+                this.center(false); // center
+                var cx = this.position.x + 300;
+                var cy = this.position.y + 300;
+
+                // place all the tiles in perfect order / colocar todas las piezas en perfecto orden
+                var i = 0;
+                for (var y = 0; y < 4; y++) {
+                    for (var x = 0; x < 4; x++) {
+                        this.children.push(new Tile(cx, cy, i));
+                        Puzzle.slots.push({ index: i, tile: i, x: x*150, y: y*150, col: x, row: y });
+                        i++;
+                    }
+                }
+
+                Puzzle.updated = false;
+
+                // shuffle / desordenar
+                this.shuffle();
+
+                Puzzle.moves = 0;
+
+                this.children.push(new Winner());
+                this.winner = false;
+            }
+
+            // shuffle the board / desordenar el tablero
+            shuffle() {
+                this.shuffling = true;
+                let n = 250; // number of random moves to shuffle / número de movimientos aleatorios para desordenar
+                const keys = [39, 37, 38, 40];
+                while (n > 0) {
+                    var k = keys[Math.floor(Math.random()*keys.length)];
+                    if (this.handleInput(k)) {
+                        n--;
+                    }
+                }
+                this.shuffling = false;
+            }
+
+            static moveTile(index) {
+                const tile = Puzzle.slots.find(s => s.tile == index);
+                const empty = Puzzle.slots.find(s => s.tile == 15);
+
+                let switchTiles = (
+                    (tile.row == empty.row && (tile.col-1 == empty.col || tile.col+1 == empty.col)) ||
+                    (tile.col == empty.col && (tile.row-1 == empty.row || tile.row+1 == empty.row))
+                );
+
+                if (switchTiles) {
+                    // console.log(`switch: ${empty.tile} ${tile.tile}`);
+                    const temp = JSON.parse(JSON.stringify(empty));
+
+                    Puzzle.slots[empty.index].tile =  tile.tile;
+                    Puzzle.slots[tile.index].tile =  temp.tile;
+
+                    Puzzle.moves++;
+                    Puzzle.updated = false;
+                    return true;
+                }
+                return false;
+            }
+
+            isWinner() {
+                let winner = true;
+                Puzzle.slots.forEach(slot => {
+                   winner = winner && slot.index == slot.tile;
+                });
+                return winner;
+            }
+
+            handleMouse(x, y, clicked) {
+                // the mouse should only work if the game is still active
+                if (this.winner) {
+                    return;
+                }
+                // console.log(`x:${x} y:${y} clicked:${clicked}`);
+                super.handleMouse(x, y, clicked);
+            }
+
+            handleInput(keyCode) {
+                const canMove = (!this.winner || this.shuffling);
+
+                // console.log("key: " + keyCode);
+                // 37 left arrow, 38 up arrow, 39 right arrow, 40 down arrow, 27 escape, 32 space, 13 enter
+                let done = false;
+                const empty = Puzzle.slots.find(s => s.tile == 15); // empty
+
+                switch(keyCode) {
+                    case 39: // Right key
+                        if (empty.col > 0 && canMove) {
+                            Puzzle.moveTile(Puzzle.slots[empty.index-1].tile);
+                            done = true;
+                        }
+                        break;
+
+                    case 37: // Left key
+                        if (empty.col < 3 && canMove) {
+                            Puzzle.moveTile(Puzzle.slots[empty.index+1].tile);
+                            done = true;
+                        }
+                        break;
+
+                    case 38: // Up key
+                        if (empty.row < 3 && canMove) {
+                            Puzzle.moveTile(Puzzle.slots[empty.index+4].tile);
+                            done = true;
+                        }
+                        break;
+
+                    case 40: // Down key
+                        if (empty.row > 0 && canMove) {
+                            Puzzle.moveTile(Puzzle.slots[empty.index-4].tile);
+                            done = true;
+                        }
+                        break;
+
+                    case 27: // ESC key
+                        this.reset();
+                        break;
+
+                    case 13: // Enter key
+                    case 32: // Space key
+                        break;
+                }
+
+                super.handleInput(keyCode);
+                return done;
+            }
+
+            center(checkTiles = true) {
+                // center game
+                var center = Utils.getCenter();
+                var cx = center.x - 300;
+                var cy = center.y - 300;
+                this.position.set(cx, cy);
+
+                // verify game position to update tiles positions
+                if (checkTiles) {
+                    if (Puzzle.slots[0].x !== this.position.x || Puzzle.slots[0].y !== this.position.y) {
+                        var i = 0;
+                        for (var y = 0; y < 4; y++) {
+                            for (var x = 0; x < 4; x++) {
+                                Puzzle.slots[i].x = x*150 + this.position.x;
+                                Puzzle.slots[i].y = y*150 + this.position.y;
+                                i++;
+                            }
+                        }
+                        Puzzle.updated = false; // force update in this frame
+                    }
+                }
+            }
+
+            update(deltaTime) {
+                this.center(); // keep the game centered
+                if (!Puzzle.updated) {
+                    // console.log(`before:`, Puzzle.slots.slice(0)); // clone
+                    this.children.forEach(tile => {
+                        if (tile instanceof Tile) {
+                            const slot = Puzzle.slots.find(s => tile.index == s.tile);
+                            if (tile.position.x !== slot.x || tile.position.y !== slot.y) {
+                                tile.moveTo(new Vector2(slot.x, slot.y));
+                            }
+                        }
+                    });
+                    // console.log(`after:`, Puzzle.slots.slice(0)); // clone
+                    Puzzle.updated = true;
+                    this.winner = this.isWinner();
+                    // console.log('winner:', this.winner);
+                    if (this.winner && Puzzle.moves > 0) {
+                        const win = this.children.find(sprite => sprite instanceof Winner);
+                        win.position.set(this.position.x + 100, this.position.y + 200); // center message
+                        win.setMessage(`You win in ${Puzzle.moves} moves`);
+                        win.active = true;
+                        console.log(`You win in ${Puzzle.moves}`);
+                    }
+                }
+                super.update(deltaTime);
+            }
+
+            render(ctx) {
+
+                // render game title
+                ctx.fillStyle = "#fff";
+                ctx.font = "38px Arial";
+                ctx.textAlign = "center";
+                ctx.fillText('PUZZLE GAME', (this.position.x + 300), (this.position.y - 50));
+
+                // render moves
+                ctx.fillStyle = "#fff";
+                ctx.font = "18px Arial";
+                ctx.textAlign = "center";
+                ctx.fillText(`[${Puzzle.moves}] moves`, (this.position.x + 300), (this.position.y + 635));
+
+                // render instructions
+                ctx.fillStyle = "#fff";
+                ctx.font = "15px Arial";
+                ctx.textAlign = "center";
+                ctx.fillText('ARROWS or CLICK to move tiles, ESC to restart', (this.position.x + 300), (this.position.y + 670));
+
+                super.render(ctx);
+            }
+        }
+
+        // Square piece with a number on it / Pieza cuadrada con un número en el
+        class Tile extends Sprite {
+            constructor(x, y, index) {
+                super(x, y, 150, 150);
+                this.position = new Vector2(x, y);
+                this.target = new Vector2(x, y);
+                this.speed = new Vector2(20, 20);
+
+                this.index = index;
+                this.hover = false;
+                this.clicked = 0; // time since the last click / tiempo desde el último click
+
+                // blank tile
+                if (this.index == 15) {
+                    this.visible = false;
+                }
+            }
+
+            handleMouse(x, y, clicked) {
+                // console.log(`x:${x} y:${y} clicked:${clicked}`);
+                this.hover = this.isHover(new Vector2(x, y));
+                if (this.hover && clicked && this.visible) {
+                    this.clicked = 0.2; // only process clicks every 0.2 seconds to allow the animation to finish
+                    Puzzle.moveTile(this.index);
+                }
+                super.handleMouse(x, y, clicked);
+            }
+
+            // move to a new target position / moverse a una nueva posición objectivo
+            moveTo(v2) {
+                // this.position = v2;
+                this.target = v2;
+            }
+
+            // returns true if the mouse (v2) is over this tile / retorna verdadero si el ratón esta sobre esta pieza
+            isHover(v2) {
+                const inX = (v2.x >= this.position.x && v2.x <= (this.position.x + this.width));
+                const inY = (v2.y >= this.position.y && v2.y <= (this.position.y + this.height));
+                return inX && inY;
+            }
+
+            update(deltaTime) {
+                if (!this.active) {
+                    return;
+                }
+
+                // move smoothly / moverse suavemente
+                if (this.position.x !== this.target.x || this.position.y !== this.target.y) {
+                    this.position.moveToTarget(this.target, this.speed, deltaTime);
+                }
+
+                // reduce the time since the last click / reducir el tiempo desde el último click
+                if (this.clicked >= 0) {
+                    this.clicked = this.clicked - deltaTime;
+                }
+
+                super.update(deltaTime);
+            }
+
+            render(ctx) {
+                if (!this.active || !this.visible) {
+                    return;
+                }
+
+                // draw two lined squares / dibujar dos cuadrados con lineas
+                ctx.strokeStyle = this.hover ? '#7f7' : '#fff';
+                ctx.beginPath();
+                ctx.rect(this.position.x + 2, this.position.y + 2, this.width - 4, this.height - 4);
+                ctx.rect(this.position.x + 10, this.position.y + 10, this.width - 20, this.height - 20);
+                ctx.closePath();
+                ctx.stroke();
+
+                // draw the centered number / dibujar el número centrado
+                ctx.fillStyle = this.clicked >= 0 ? '#7ff' : "#fff";
+                ctx.font = "48px Arial";
+                ctx.textAlign = "center";
+                ctx.fillText((this.index+1).toString(), this.position.x + (this.width/2), this.position.y + (this.height/1.7));
+
+                super.render(ctx);
+            }
+        }
+
+        // Winner message / Mensaje de Victoria
+        class Winner extends Sprite {
+            constructor() {
+                super(100, 200, 400, 200);
+                this.active = false; // not active initially / no activo inicialmente
+                this.message = 'Winner!';
+            }
+
+            setMessage(msg) {
+                this.message = msg;
+                this.createFireworks();
+            }
+
+            createFireworks() {
+                const rndPos = (vector, variance) => {
+                    vector.x = Utils.getRandomInt(vector.x - variance, vector.x + variance);
+                    vector.y = Utils.getRandomInt(vector.y - variance, vector.y + variance);
+                    return vector;
+                };
+
+                this.children = [];
+                const center = Utils.getCenter();
+                for (let i = 0; i < 10; i++) {
+                    const v2 = rndPos(center.clone(), 250);
+                    this.children.push(
+                        new Fireworks(v2.x, v2.y)
+                    );
+                }
+            }
+
+            update(deltaTime) {
+                if (!this.active) {
+                    return;
+                }
+
+                super.update(deltaTime);
+            }
+
+            render(ctx) {
+                if (!this.active || !this.visible) {
+                    return;
+                }
+
+                // draw a white square / dibujar un cuadro blanco
+                ctx.fillStyle = '#fff';
+                ctx.beginPath();
+                ctx.rect(this.position.x, this.position.y, this.width, this.height);
+                ctx.closePath();
+                ctx.fill();
+
+                // draw centered text / dibujar texto negro centrado
+                ctx.fillStyle = '#000';
+                ctx.font = "36px Arial";
+                ctx.textAlign = "center";
+                ctx.fillText(this.message, this.position.x + (this.width/2), this.position.y + (this.height/1.8));
+
+                super.render(ctx);
+            }
+        }
+
+        // Firework sparks / Chispas del fuego artificial
+        class Spark extends Sprite {
+            constructor(x, y, angle, color, speed) {
+                super(x, y, 1, 1);
+                this.position = new Vector2(x, y);
+                this.trailPosition = new Vector2(x, y);
+                this.distance = Utils.getRandomInt(1, 6) * 50;
+                this.speed = speed;
+                this.acceleration = speed;
+                this.angle = angle
+                this.color = color;
+
+                this.target = Vector2.getTargetByAngle(this.position.clone(), this.angle, this.distance);
+
+                this.maxTrail = 15;
+                this.trail = [];
+            }
+
+            update(deltaTime) {
+                if (!this.active) {
+                    return;
+                }
+
+                let isPosOnTarget = (this.position.x - this.target.x > 1 && this.position.y - this.target.y > 1);
+
+                if (this.trail.length >= this.maxTrail || (isPosOnTarget && this.trail.length > 0)) {
+                    this.trailPosition = this.trail.shift();
+                }
+
+                this.position.x = Utils.lerp(this.position.x, this.target.x, this.speed.x * deltaTime);
+                this.position.y = Utils.lerp(this.position.y, this.target.y, this.speed.y * deltaTime);
+
+                let isTrailOnTarget = (this.trailPosition.x - this.trailPosition.x > 1 && this.position.y - this.target.y > 1);
+
+                if (!isTrailOnTarget) {
+                    this.trail.push(this.position.clone());
+                }
+
+                if (isPosOnTarget && isTrailOnTarget) {
+                    this.active = false;
+                }
+
+                super.update(deltaTime);
+            }
+
+            render(ctx) {
+                if (!this.active || !this.visible) {
+                    return;
+                }
+
+                ctx.beginPath();
+                ctx.moveTo(this.position.x, this.position.y);
+                ctx.lineTo(this.trailPosition.x, this.trailPosition.y);
+                ctx.strokeStyle = this.color;
+                ctx.stroke();
+
+                super.render(ctx);
+            }
+        }
+
+        // Creating fireworks / Creando fuegos artificiales
+        class Fireworks extends Sprite {
+            constructor(x, y) {
+                super(x, y, 1, 1);
+                this.position = new Vector2(x, y)
+                this.spawn = 100;
+                this.children = [];
+
+                const colors = ['red', 'white', 'cyan', 'green', 'yellow', 'red', 'violet']
+                this.color = colors[Utils.getRandomInt(0, colors.length-1)];
+
+                for (let i = 0; i < this.spawn; i++) {
+                    let _speed = new Vector2(Utils.getRandomInt(5, 8), Utils.getRandomInt(5, 8));
+                    this.children.push(new Spark(this.position.x, this.position.y, Utils.getRandomInt(0, 359), this.color, _speed));
+                }
+
+                this.delay = (Utils.getRandomInt(1, 10) / 100) * 5;
+            }
+
+            update(deltaTime) {
+                if (!this.active) {
+                    return;
+                }
+
+
+                if (this.delay > 0) {
+                    this.delay -= deltaTime;
+                    return;
+                }
+
+
+                super.update(deltaTime);
+            }
+
+            render(ctx) {
+                if (!this.active || !this.visible) {
+                    return;
+                }
+
+                super.render(ctx);
+            }
+
+        }
+
+
+        // -----------------------------------
+        // Run the game / Correr el juego
+        // -----------------------------------
+
+        // Create a intance of the game / crear una instancia del juego
+        const gamePuzzle = new Puzzle();
+
+        // Pass the main Sprite / Pasar el caracter principal
+        const game = new Game(gamePuzzle, true, 1);
+
+    </script>
+
+</body>
+</html>
